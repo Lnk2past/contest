@@ -3,17 +3,16 @@ import os
 import re
 import sys
 import yaml
+from loguru import logger
+from yaml import FullLoader as DefaultLoader
+
 from contest import __version__
 from contest.TestCase import TestCase
 from contest.utilities import configure_yaml  # noqa: F401
-from contest.utilities.logger import logger, logger_format_fields, setup_logger
-# PyYAML 3.12 compatibility
-try:
-    from yaml import FullLoader as DefaultLoader
-except ImportError:
-    from yaml import Loader as DefaultLoader
+
 
 sys.dont_write_bytecode = True
+logger.remove()
 
 
 def filter_tests(case_name, includes, excludes):
@@ -29,7 +28,7 @@ def filter_tests(case_name, includes, excludes):
     """
     for re_filter in excludes:
         if re.search(re_filter, case_name):
-            logger.debug(f'Excluding {case_name}, matches pattern {re_filter}', extra=logger_format_fields)
+            logger.debug(f'Excluding {case_name}, matches pattern {re_filter}')
             return False
 
     if not includes:
@@ -37,7 +36,7 @@ def filter_tests(case_name, includes, excludes):
 
     for re_filter in includes:
         if re.search(re_filter, case_name):
-            logger.debug(f'Including {case_name}, matches pattern {re_filter}', extra=logger_format_fields)
+            logger.debug(f'Including {case_name}, matches pattern {re_filter}')
             return True
     return False
 
@@ -52,56 +51,56 @@ def test():
     parser.add_argument('--verbose', action='store_true', default=False, help='verbose output')
     parser.add_argument('--version', action='version', version=f'contest.py v{__version__.__version__}')
     inputs = parser.parse_args()
+    if inputs.verbose:
+        logger.add(sys.stdout, format='{extra[test_case]}: {message}', level='DEBUG')
+    else:
+        logger.add(sys.stdout, format='{extra[test_case]}: {message}', level='CRITICAL')
 
-    setup_logger(inputs.verbose)
-    logger_format_fields['test_case'] = 'contest'
+    base_logger = logger.bind(test_case='contest')
 
-    logger.critical(f'Loading {inputs.configuration}', extra=logger_format_fields)
+    base_logger.critical(f'Loading {inputs.configuration}')
     test_matrix = yaml.load(open(inputs.configuration, 'r'), Loader=DefaultLoader)
-    logger.debug(f'{inputs.configuration} Loaded', extra=logger_format_fields)
+    base_logger.debug(f'{inputs.configuration} Loaded')
     executable = test_matrix.get('executable', '')
-    logger.debug(f'Root executable: {executable}', extra=logger_format_fields)
+    base_logger.debug(f'Root executable: {executable}')
 
     number_of_tests = len(test_matrix['test-cases'])
-    logger.critical(f'Found {number_of_tests} tests', extra=logger_format_fields)
+    base_logger.critical(f'Found {number_of_tests} tests')
     test_cases = [case for case in test_matrix['test-cases'] if filter_tests(case['name'], inputs.filters, inputs.exclude_filters)]
     number_of_tests_to_run = len(test_cases)
-    logger.critical(f'Running {number_of_tests_to_run} tests', extra=logger_format_fields)
+    base_logger.critical(f'Running {number_of_tests_to_run} tests')
 
     tests = []
     for test_case in test_cases:
-        tests.append(
-            TestCase(
-                test_case['name'],
-                test_case.get('executable', executable),
-                test_case.get('return-code', None),
-                test_case.get('argv', []),
-                test_case.get('stdin', ''),
-                test_case.get('stdout', ''),
-                test_case.get('stderr', ''),
-                test_case.get('ofstreams', []),
-                test_case.get('env', {}) if test_case.get('scrub-env', False) else {**os.environ, **test_case.get('env', {})},
-                test_case.get('extra-tests', []),
-                test_case.get('timeout', None),
-                os.path.join(os.path.dirname(inputs.configuration), 'test_output', test_case['name']),
-                test_case.get('resources', []),
-                test_case.get('setup', []),
+        with logger.contextualize(test_case=test_case['name']):
+            tests.append(
+                TestCase(
+                    test_case['name'],
+                    test_case.get('executable', executable),
+                    test_case.get('return-code', None),
+                    test_case.get('argv', []),
+                    test_case.get('stdin', ''),
+                    test_case.get('stdout', ''),
+                    test_case.get('stderr', ''),
+                    test_case.get('ofstreams', []),
+                    test_case.get('env', {}) if test_case.get('scrub-env', False) else {**os.environ, **test_case.get('env', {})},
+                    test_case.get('extra-tests', []),
+                    test_case.get('timeout', None),
+                    os.path.join(os.path.dirname(inputs.configuration), 'test_output', test_case['name']),
+                    test_case.get('resources', []),
+                    test_case.get('setup', []),
+                )
             )
-        )
 
     errors = 0
     tests_run = 0
     for test in tests:
-        errors += test.execute()
-        tests_run += 1
-        if inputs.fail and errors:
-            logger_format_fields['test_case'] = 'contest'
-            logger.critical('Breaking on first failue', extra=logger_format_fields)
-            break
-
-    logger_format_fields['test_case'] = 'contest'
-
-    logger.critical(f'{tests_run-errors}/{tests_run} tests passed!', extra=logger_format_fields)
+        with logger.contextualize(test_case=test.case_name):
+            errors += test.execute()
+            tests_run += 1
+            if inputs.fail and errors:
+                break
+    base_logger.critical(f'{tests_run-errors}/{tests_run} tests passed!')
     return errors
 
 

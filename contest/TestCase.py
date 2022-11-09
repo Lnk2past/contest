@@ -4,11 +4,11 @@ import shutil
 from itertools import zip_longest
 from subprocess import run, PIPE, TimeoutExpired
 
+from loguru import logger
 from PIL import Image, ImageChops
 
 from contest.utilities import chdir
 from contest.utilities.importer import import_from_source
-from contest.utilities.logger import logger, logger_format_fields
 
 
 class TestCase:
@@ -46,8 +46,7 @@ class TestCase:
             resources (list): list of resources to copy to the test directory
             setup (list): list of commands to run before executing the core test
         """
-        logger_format_fields['test_case'] = case_name
-        logger.debug(f'Constructing test case {case_name}', extra=logger_format_fields)
+        logger.debug(f'Constructing test case {case_name}')
         self.case_name = case_name
         self.exe = exe
         self.return_code = return_code
@@ -74,7 +73,7 @@ class TestCase:
         for step in self.setup:
             step = self._setup_test_process(step)
             with chdir.ChangeDirectory(self.test_home):
-                logger.debug(f'Running setup: {step}', extra=logger_format_fields)
+                logger.debug(f'Running setup: {step}')
                 run(step, stdout=PIPE, stderr=PIPE, cwd=pathlib.Path.cwd())
 
     def _setup_istream(self, stream):
@@ -129,21 +128,20 @@ class TestCase:
         Returns:
             Number of errors encountered
         """
-        logger_format_fields['test_case'] = self.case_name
-        logger.critical('Starting test', extra=logger_format_fields)
-        logger.debug(f'Test Home: {self.test_home}', extra=logger_format_fields)
-        logger.debug(f'Running: {self.test_args}', extra=logger_format_fields)
+        logger.critical('Starting test')
+        logger.debug(f'Test Home: {self.test_home}')
+        logger.debug(f'Running: {self.test_args}')
         with chdir.ChangeDirectory(self.test_home):
             errors = 0
             try:
                 proc = run(self.test_args, input=self.stdin, stdout=PIPE, stderr=PIPE, cwd=pathlib.Path.cwd(),
                            timeout=self.timeout, universal_newlines=True, env=self.env)
             except TimeoutExpired:
-                logger.critical('Your program took too long to run! Perhaps you have an infinite loop?', extra=logger_format_fields)
+                logger.critical('Your program took too long to run! Perhaps you have an infinite loop?')
                 errors += 1
 
             if self.return_code is not None and int(self.return_code) != proc.returncode:
-                logger.critical(f'FAILURE:\n         Expected return code {self.return_code}, received {proc.returncode}', extra=logger_format_fields)
+                logger.critical(f'FAILURE:\n         Expected return code {self.return_code}, received {proc.returncode}')
                 errors += 1
 
             if 'file' in self.stdout:
@@ -157,20 +155,20 @@ class TestCase:
             try:
                 for ofstream in self.ofstreams:
                     file_type = ofstream.get('type', 'text')
-                    logger.debug(f'Performing {file_type} comparison', extra=logger_format_fields)
+                    logger.debug(f'Performing {file_type} comparison')
                     if file_type == 'text':
                         if 'file' in ofstream:
                             ofstream['text'] = open(ofstream['file'], 'r')
                         errs = self.check_streams(ofstream['test-file'], ofstream, open(ofstream['test-file'], 'r'))
                         if errs:
-                            logger.critical(f'Errors found checking streams: {errs}', extra=logger_format_fields)
+                            logger.critical(f'Errors found checking streams: {errs}')
                         errors += errs
                     elif file_type == 'binary':
                         if 'file' in ofstream:
                             ofstream['text'] = open(ofstream['file'], 'rb')
                         errs = self.check_streams(ofstream['test-file'], ofstream, open(ofstream['test-file'], 'rb'))
                         if errs:
-                            logger.critical(f'Errors found checking binary streams: {errs}', extra=logger_format_fields)
+                            logger.critical(f'Errors found checking binary streams: {errs}')
                         errors += errs
                     elif file_type == 'image':
                         f_image = Image.open(ofstream['file'])
@@ -178,19 +176,19 @@ class TestCase:
                         diff = ImageChops.difference(f_image, t_image)
                         if diff.getbbox():
                             errors += 1
-                            logger.critical('Errors found checking images', extra=logger_format_fields)
+                            logger.critical('Errors found checking images')
             except FileNotFoundError:
-                logger.critical(f'FAILURE:\n        Could not find output file {ofstream["test-file"]}', extra=logger_format_fields)
+                logger.critical(f'FAILURE:\n        Could not find output file {ofstream["test-file"]}')
                 errors += 1
             for extra_test in self.extra_tests:
-                logger.debug(f'Running extra test: {extra_test}', extra=logger_format_fields)
+                logger.debug(f'Running extra test: {extra_test}')
                 extra_test = import_from_source(extra_test)
                 if not extra_test.test():
                     errors += 1
-                    logger.critical('Failed!', extra=logger_format_fields)
+                    logger.critical('Failed!')
 
             if not errors:
-                logger.critical('OK!', extra=logger_format_fields)
+                logger.critical('OK!')
 
         return int(errors > 0)
 
@@ -206,28 +204,28 @@ class TestCase:
         Returns:
             0 for no error, 1 for error
         """
-        logger.debug(f'Comparing {stream} streams line by line', extra=logger_format_fields)
+        logger.debug(f'Comparing {stream} streams line by line')
 
         if 'empty' in expected:
             if expected['empty'] and received:
-                logger.critical(f'FAILURE:\nExpected {stream} to be empty', extra=logger_format_fields)
+                logger.critical(f'FAILURE:\nExpected {stream} to be empty')
                 return 1
             elif not expected['empty'] and not received:
-                logger.critical(f'FAILURE:\nExpected {stream} to be nonempty', extra=logger_format_fields)
+                logger.critical(f'FAILURE:\nExpected {stream} to be nonempty')
                 return 1
             return 0
 
         if 'ignore' in expected:
-            logger.debug('Ignoring stream', extra=logger_format_fields)
+            logger.debug('Ignoring stream')
             return 0
 
         for line_number, (e, r) in enumerate(zip_longest(expected['text'], received)):
             if line_number < expected['start']:
                 continue
-            logger.debug(f'{stream} line {line_number}:\n"{e}"\n"{r}"\n', extra=logger_format_fields)
+            logger.debug(f'{stream} line {line_number}:\n"{e}"\n"{r}"\n')
             if e != r:
                 if None in [e, r]:
-                    logger.critical('ERROR: Expected and received streams do not have equal length!', extra=logger_format_fields)
+                    logger.critical('ERROR: Expected and received streams do not have equal length!')
                     e = '' if e is None else e
                     r = '' if r is None else r
                 i = 0
@@ -246,9 +244,9 @@ class TestCase:
                 e = f'        Expected "{e}"'
                 r = f'        Received "{r}"'
                 error_location = (' '*18) + (' '*i) + '^ ERROR'
-                logger.critical(f'FAILURE:\n{e}\n{r}\n{error_location}', extra=logger_format_fields)
+                logger.critical(f'FAILURE:\n{e}\n{r}\n{error_location}')
                 return 1
             if line_number - expected['start'] + 1 == expected['count']:
-                logger.debug(f'Checked {expected["count"]} lines, breaking', extra=logger_format_fields)
+                logger.debug(f'Checked {expected["count"]} lines, breaking')
                 break
         return 0
