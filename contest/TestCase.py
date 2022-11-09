@@ -65,7 +65,10 @@ class TestCase:
         shutil.rmtree(self.test_home, ignore_errors=True)
         pathlib.Path(self.test_home).mkdir(parents=True, exist_ok=True)
         for resource in resources:
-            shutil.copytree(resource['src'], pathlib.Path(self.test_home)/resource['dst'])
+            if isinstance(resource, str):
+                shutil.copytree(resource, pathlib.Path(self.test_home)/resource)
+            elif isinstance(resource, dict):
+                shutil.copytree(resource['src'], pathlib.Path(self.test_home)/resource['dst'])
 
         self.test_args = self._setup_test_process(self.exe, self.argv)
         for step in self.setup:
