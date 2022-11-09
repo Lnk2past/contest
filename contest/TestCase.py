@@ -139,7 +139,7 @@ class TestCase:
                 logger.critical('Your program took too long to run! Perhaps you have an infinite loop?', extra=logger_format_fields)
                 errors += 1
 
-            if self.return_code and int(self.return_code) != proc.returncode:
+            if self.return_code is not None and int(self.return_code) != proc.returncode:
                 logger.critical(f'FAILURE:\n         Expected return code {self.return_code}, received {proc.returncode}', extra=logger_format_fields)
                 errors += 1
 

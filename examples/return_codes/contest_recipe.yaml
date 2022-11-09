@@ -1,0 +1,8 @@
+executable: python foobarbaz.py
+test-cases:
+    - name: test_for_success
+      argv: ['hello']
+      return-code: 0
+    - name: test_for_failure
+      argv: ['world']
+      return-code: 1

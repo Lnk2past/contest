@@ -46,7 +46,7 @@ test-cases:                 # !!seq, list of all test cases
       argv:                 # !!seq, list of arguments to pass to the executable
       stdin:                # !!str || !!seq inputs to standard input stream
         # * see below
-      returncode:           # !!int, expected return code
+      return-code:           # !!int, expected return code
       stdout:               # !!str || !!seq || !!map, expected output in standard output stream
         # ** see below
       stderr:               # !!str || !!seq || !!map, expected output in standard error stream
